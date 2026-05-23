@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Hoopsyder aide a trouver rapidement des terrains de basket autour de soi."
+    />
+    <title>Hoopsyder</title>
+    <link rel="preconnect" href="https://{s}.tile.openstreetmap.org" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      defer
+    ></script>
+    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+    <script type="module" src="/src/main.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="finder-panel" aria-label="Recherche de terrains">
+        <header class="brand-bar">
+          <div class="brand-mark" aria-hidden="true">
+            <span></span>
+          </div>
+          <div>
+            <p class="eyebrow">pickup court finder</p>
+            <h1>Hoopsyder</h1>
+          </div>
+        </header>
+
+        <section class="search-zone" aria-labelledby="search-title">
+          <div class="section-heading">
+            <h2 id="search-title">Terrains proches</h2>
+            <p id="status-text">Localise-toi ou cherche une ville pour demarrer.</p>
+          </div>
+
+          <div class="action-row">
+            <button class="primary-action" id="locate-button" type="button">
+              <i data-lucide="crosshair" aria-hidden="true"></i>
+              Autour de moi
+            </button>
+            <button class="icon-action" id="refresh-button" type="button" aria-label="Relancer la recherche">
+              <i data-lucide="rotate-cw" aria-hidden="true"></i>
+            </button>
+          </div>
+
+          <form class="search-form" id="place-form">
+            <label for="place-input">Ville ou adresse</label>
+            <div class="search-input-wrap">
+              <i data-lucide="search" aria-hidden="true"></i>
+              <input
+                id="place-input"
+                name="place"
+                type="search"
+                placeholder="Paris, Pointe-a-Pitre, Lyon..."
+                autocomplete="street-address"
+              />
+              <button class="search-submit" type="submit" aria-label="Chercher cette adresse">
+                <i data-lucide="arrow-right" aria-hidden="true"></i>
+              </button>
+            </div>
+          </form>
+
+          <div class="filters" aria-label="Rayon de recherche">
+            <label for="radius-input">Rayon</label>
+            <div class="radius-row">
+              <input id="radius-input" type="range" min="500" max="5000" step="250" value="1800" />
+              <output id="radius-output" for="radius-input">1,8 km</output>
+            </div>
+          </div>
+        </section>
+
+        <section class="results-zone" aria-labelledby="results-title">
+          <div class="section-heading compact">
+            <h2 id="results-title">Spots detectes</h2>
+            <span id="result-count">0</span>
+          </div>
+          <ol class="court-list" id="court-list"></ol>
+        </section>
+      </aside>
+
+      <main class="map-stage" aria-label="Carte des terrains">
+        <div id="map"></div>
+        <div class="map-overlay top">
+          <div>
+            <span class="live-dot" aria-hidden="true"></span>
+            <strong id="map-label">Pret a chercher</strong>
+          </div>
+          <button class="ghost-action" id="zoom-results-button" type="button">
+            <i data-lucide="maximize-2" aria-hidden="true"></i>
+            Ajuster
+          </button>
+        </div>
+        <div class="map-overlay bottom">
+          <i data-lucide="database" aria-hidden="true"></i>
+          <span>Donnees OpenStreetMap via Overpass</span>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>
