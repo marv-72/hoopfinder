@@ -1,6 +1,6 @@
-# Hoopsyder
+# Hoopfinder
 
-Hoopsyder est une application web statique pour trouver des terrains de basket a proximite.
+Hoopfinder est une application web statique pour trouver des terrains de basket a proximite.
 
 ## Fonctionnalites
 
