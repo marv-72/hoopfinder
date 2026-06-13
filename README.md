@@ -24,4 +24,5 @@ npm run build
 ```
 
 Le workflow `.github/workflows/pages.yml` build l'application avec Vite et publie le dossier
-`dist` sur GitHub Pages a chaque push sur `main`.
+`dist` sur GitHub Pages a chaque push sur `main` :
+https://marv-72.github.io/hoopfinder/
