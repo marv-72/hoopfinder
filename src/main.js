@@ -3,7 +3,9 @@ const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 const DEFAULT_CENTER = [16.2417, -61.5331];
 const DEFAULT_ZOOM = 13;
 const COURT_LIMIT = 30;
-const VIP_COUNTRY_RADIUS = 50000;
+const VIP_REGION_RADIUS = 18000;
+const VIP_TERRITORY_RADIUS = 90000;
+const VIP_COURT_LIMIT = 140;
 const VIP_PASS_STORAGE_KEY = "hoopfinder-vip-pass";
 
 const elements = {
@@ -33,8 +35,14 @@ const state = {
   markers: L.layerGroup(),
   userMarker: null,
   lastSearchLabel: "Pointe-a-Pitre",
-  vipCountryCourts: [],
-  vipCountryCenterKey: "",
+  vipCourts: {
+    region: [],
+    territoire: [],
+  },
+  vipCenterKeys: {
+    region: "",
+    territoire: "",
+  },
   vipLoading: false,
   vipScope: "region",
   vipUnlocked: localStorage.getItem(VIP_PASS_STORAGE_KEY) === "active",
@@ -311,19 +319,28 @@ function normalizeCourt(element, index) {
   const tags = element.tags || {};
 
   return {
+    access: tags.access || "public",
+    basketball: tags.basketball || "",
+    fee: tags.fee || "no",
     id: element.id,
     name: courtName(tags, index + 1),
     lat,
+    leisure: tags.leisure || "",
     lon,
+    operator: tags.operator || "",
+    sport: tags.sport || "",
     surface: tags.surface || tags.floor || "surface inconnue",
     hoops: tags.hoop_count ? `${tags.hoop_count} paniers` : tags.basketball || "basket",
+    hoopCount: Number(tags.hoop_count || 0),
     covered: tags.covered === "yes",
+    indoor: tags.indoor === "yes",
     lit: tags.lit === "yes",
+    rawTags: tags,
     distance: distanceInMeters(state.center, [lat, lon]),
   };
 }
 
-function buildOverpassQuery([lat, lon], radius) {
+function buildOverpassQuery([lat, lon], radius, limit = COURT_LIMIT) {
   return `
     [out:json][timeout:25];
     (
@@ -333,17 +350,17 @@ function buildOverpassQuery([lat, lon], radius) {
       node(around:${radius},${lat},${lon})["leisure"="pitch"]["hoops"];
       way(around:${radius},${lat},${lon})["leisure"="pitch"]["hoops"];
     );
-    out center tags ${COURT_LIMIT};
+    out center tags ${limit};
   `;
 }
 
-async function fetchCourts(center = state.center, radius = elements.radiusInput.value) {
+async function fetchCourts(center = state.center, radius = elements.radiusInput.value, limit = COURT_LIMIT) {
   const response = await fetch(OVERPASS_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
     },
-    body: new URLSearchParams({ data: buildOverpassQuery(center, radius) }),
+    body: new URLSearchParams({ data: buildOverpassQuery(center, radius, limit) }),
   });
 
   if (!response.ok) {
@@ -356,7 +373,7 @@ async function fetchCourts(center = state.center, radius = elements.radiusInput.
     .map(normalizeCourt)
     .filter((court) => Number.isFinite(court.distance))
     .sort((a, b) => a.distance - b.distance)
-    .slice(0, COURT_LIMIT);
+    .slice(0, limit);
 }
 
 async function geocodePlace(query) {
@@ -445,58 +462,128 @@ function centerCourtAndOpenRoute(court) {
   openRouteChooser(court);
 }
 
-function vipCenterKey() {
-  return `${state.center[0].toFixed(3)},${state.center[1].toFixed(3)}`;
+function vipDisplayName(court, index) {
+  return court.name.startsWith("Terrain #") ? `Spot VIP #${index + 1}` : court.name;
+}
+
+function vipCenterKey(scope) {
+  return `${scope}:${state.center[0].toFixed(3)},${state.center[1].toFixed(3)}`;
+}
+
+function courtIdentity(court) {
+  return `${court.id}-${court.lat.toFixed(5)}-${court.lon.toFixed(5)}`;
+}
+
+function freeCourtIdentities() {
+  return new Set(state.courts.map(courtIdentity));
+}
+
+function isKnownFreeCourt(court, freeKeys = freeCourtIdentities()) {
+  if (freeKeys.has(courtIdentity(court))) {
+    return true;
+  }
+
+  return state.courts.some((freeCourt) => (
+    distanceInMeters([court.lat, court.lon], [freeCourt.lat, freeCourt.lon]) < 35
+  ));
+}
+
+function normalizedText(value) {
+  return String(value || "").toLowerCase();
 }
 
 function vipScore(court) {
-  let score = 48;
+  let score = 42;
+  const surface = normalizedText(court.surface);
+  const basketball = normalizedText(court.basketball);
+  const access = normalizedText(court.access);
 
   if (!court.name.startsWith("Terrain #")) {
-    score += 12;
+    score += 14;
+  }
+
+  if (court.operator) {
+    score += 8;
   }
 
   if (court.lit) {
-    score += 16;
+    score += 18;
   }
 
   if (court.covered) {
+    score += 14;
+  }
+
+  if (court.indoor) {
     score += 10;
   }
 
   if (court.surface && court.surface !== "surface inconnue") {
-    score += 9;
+    score += 8;
   }
 
-  if (court.hoops && court.hoops !== "basket") {
-    score += 7;
-  }
-
-  if (court.distance < 1000) {
+  if (/(tartan|rubber|acrylic|polyurethane|synthetic|sport)/.test(surface)) {
     score += 10;
-  } else if (court.distance < 3000) {
+  } else if (/(asphalt|asphalte|concrete|beton|béton)/.test(surface)) {
     score += 6;
-  } else if (court.distance < 10000) {
+  }
+
+  if (court.hoopCount >= 4) {
+    score += 12;
+  } else if (court.hoopCount >= 2 || /full|2/.test(basketball)) {
+    score += 8;
+  } else if (court.hoops && court.hoops !== "basket") {
+    score += 5;
+  }
+
+  if (court.leisure === "pitch") {
+    score += 6;
+  }
+
+  if (["yes", "public", "permissive", "customers"].includes(access)) {
+    score += 6;
+  }
+
+  if (access === "private" || access === "no") {
+    score -= 30;
+  }
+
+  if (court.fee === "yes") {
+    score -= 8;
+  }
+
+  if (court.distance > Number(elements.radiusInput.value)) {
+    score += 8;
+  }
+
+  if (court.distance < 25000) {
+    score += 4;
+  } else if (court.distance < 70000) {
     score += 3;
   }
 
-  return Math.min(score, 99);
+  return Math.max(10, Math.min(score, 99));
 }
 
 function vipTags(court) {
   return [
+    `score ${court.vipScore}`,
     court.lit ? "eclaire" : "",
     court.covered ? "couvert" : "",
+    court.indoor ? "indoor" : "",
     court.surface && court.surface !== "surface inconnue" ? court.surface : "",
-  ].filter(Boolean).slice(0, 2);
+  ].filter(Boolean).slice(0, 3);
 }
 
 function rankedVipCourts(courts) {
   const seen = new Set();
+  const freeKeys = freeCourtIdentities();
+
   return courts
     .filter((court) => Number.isFinite(court.lat) && Number.isFinite(court.lon))
+    .filter((court) => !isKnownFreeCourt(court, freeKeys))
     .filter((court) => {
-      const key = `${court.id}-${court.lat.toFixed(5)}-${court.lon.toFixed(5)}`;
+      const key = courtIdentity(court);
       if (seen.has(key)) {
         return false;
       }
@@ -516,7 +603,7 @@ function renderVipList(courts) {
   const rankedCourts = rankedVipCourts(courts);
 
   if (rankedCourts.length === 0) {
-    setVipListMessage("Aucun terrain VIP trouve pour cette zone.");
+    setVipListMessage("Aucun terrain VIP distinct des spots gratuits trouve pour cette zone.");
     return;
   }
 
@@ -524,13 +611,14 @@ function renderVipList(courts) {
   rankedCourts.forEach((court, index) => {
     const item = document.createElement("li");
     const tags = vipTags(court);
+    const displayName = vipDisplayName(court, index);
     item.className = "vip-item";
     item.innerHTML = `
       <button class="vip-court-button" type="button">
         <span class="vip-rank">${index + 1}</span>
         <span class="vip-copy">
-          <strong>${escapeHtml(court.name)}</strong>
-          <span>${Math.round(court.distance)} m - score ${court.vipScore}</span>
+          <strong>${escapeHtml(displayName)}</strong>
+          <span>${formatRadius(court.distance)} - analyse territoire</span>
         </span>
         <span class="vip-tags">
           ${tags.length ? tags.map((tag) => `<small>${escapeHtml(tag)}</small>`).join("") : "<small>spot</small>"}
@@ -538,7 +626,7 @@ function renderVipList(courts) {
       </button>
     `;
     item.querySelector(".vip-court-button").addEventListener("click", () => {
-      centerCourtAndOpenRoute(court);
+      centerCourtAndOpenRoute({ ...court, name: displayName });
     });
     elements.vipList.appendChild(item);
   });
@@ -564,27 +652,40 @@ async function renderVipCourts() {
     return;
   }
 
-  if (state.vipScope === "region") {
-    renderVipList(state.courts);
-    return;
-  }
+  const scopeConfig = {
+    region: {
+      radius: VIP_REGION_RADIUS,
+      label: "region",
+    },
+    territoire: {
+      radius: VIP_TERRITORY_RADIUS,
+      label: "territoire",
+    },
+  }[state.vipScope] || {
+    radius: VIP_TERRITORY_RADIUS,
+    label: "territoire",
+  };
+  const centerKey = vipCenterKey(state.vipScope);
 
-  const centerKey = vipCenterKey();
-  if (state.vipCountryCenterKey !== centerKey) {
+  if (state.vipCenterKeys[state.vipScope] !== centerKey) {
     state.vipLoading = true;
-    state.vipCountryCenterKey = centerKey;
-    setVipListMessage("Recherche des meilleurs terrains VIP...");
+    state.vipCenterKeys[state.vipScope] = centerKey;
+    setVipListMessage(`Analyse VIP du ${scopeConfig.label}...`);
 
     try {
-      state.vipCountryCourts = await fetchCourts(state.center, VIP_COUNTRY_RADIUS);
+      state.vipCourts[state.vipScope] = await fetchCourts(
+        state.center,
+        scopeConfig.radius,
+        VIP_COURT_LIMIT
+      );
     } catch {
-      state.vipCountryCourts = state.courts;
+      state.vipCourts[state.vipScope] = [];
     } finally {
       state.vipLoading = false;
     }
   }
 
-  renderVipList(state.vipCountryCourts.length ? state.vipCountryCourts : state.courts);
+  renderVipList(state.vipCourts[state.vipScope]);
 }
 
 function activateVipPass() {
