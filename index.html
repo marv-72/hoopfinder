@@ -76,6 +76,35 @@
           </div>
         </section>
 
+        <section class="vip-zone" aria-labelledby="vip-title">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">pass premium</p>
+              <h2 id="vip-title">VIP Courts</h2>
+            </div>
+            <span class="vip-price">5 EUR</span>
+          </div>
+
+          <div class="vip-card is-locked" id="vip-card">
+            <div class="vip-locked" id="vip-locked">
+              <i data-lucide="sparkles" aria-hidden="true"></i>
+              <strong>Top terrains region ou pays</strong>
+              <span>Selection classee par qualite du spot et proximite.</span>
+              <button class="vip-unlock" id="vip-unlock-button" type="button">
+                Activer VIP - 5 EUR
+              </button>
+            </div>
+
+            <div class="vip-content" id="vip-content" hidden>
+              <div class="vip-toggle" aria-label="Portee VIP">
+                <button class="is-active" data-vip-scope="region" type="button">Region</button>
+                <button data-vip-scope="pays" type="button">Pays</button>
+              </div>
+              <ol class="vip-list" id="vip-list"></ol>
+            </div>
+          </div>
+        </section>
+
         <section class="results-zone" aria-labelledby="results-title">
           <div class="section-heading compact">
             <h2 id="results-title">Spots detectes</h2>
