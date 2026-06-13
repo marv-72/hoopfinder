@@ -185,14 +185,16 @@ h2 {
 .primary-action:hover,
 .icon-action:hover,
 .ghost-action:hover,
-.route-action:hover {
+.route-dialog-action:hover {
   transform: translateY(-1px);
 }
 
 .primary-action svg,
 .icon-action svg,
 .ghost-action svg,
-.route-action svg,
+.court-route-hint svg,
+.route-dialog-action svg,
+.route-dialog-close svg,
 .search-input-wrap svg,
 .map-overlay svg {
   width: 18px;
@@ -288,9 +290,6 @@ output {
 }
 
 .court-card {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
-  align-items: center;
   width: 100%;
   min-height: 72px;
   border: 1px solid var(--line);
@@ -306,8 +305,7 @@ output {
 
 .court-focus {
   display: grid;
-  grid-column: 1 / 3;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
+  grid-template-columns: 44px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -319,38 +317,18 @@ output {
   text-align: left;
 }
 
-.route-actions {
-  display: grid;
-  grid-template-rows: 1fr 1fr;
-  align-self: stretch;
-  min-width: 82px;
-  border-left: 1px solid var(--line);
-  border-radius: 0 8px 8px 0;
-  overflow: hidden;
-}
-
-.route-action {
+.court-route-hint {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
-  min-height: 36px;
-  padding: 0 10px;
+  min-height: 38px;
+  padding: 0 11px;
+  border-radius: 8px;
   color: var(--teal);
+  background: rgba(198, 238, 240, 0.58);
   font-size: 0.78rem;
   font-weight: 900;
-  text-decoration: none;
-  transition:
-    transform 160ms ease,
-    background 160ms ease;
-}
-
-.route-action + .route-action {
-  border-top: 1px solid var(--line);
-}
-
-.route-action:hover {
-  background: rgba(198, 238, 240, 0.58);
 }
 
 .rank {
@@ -387,6 +365,156 @@ output {
 .court-meta {
   max-width: 74px;
   text-align: right;
+}
+
+.route-dialog {
+  width: min(420px, calc(100vw - 32px));
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ink);
+  background: transparent;
+  box-shadow: 0 28px 80px rgba(25, 33, 38, 0.34);
+}
+
+.route-dialog::backdrop {
+  background: rgba(25, 33, 38, 0.42);
+  backdrop-filter: blur(4px);
+}
+
+.route-dialog-panel {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.route-dialog-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  align-items: start;
+  gap: 14px;
+}
+
+.route-dialog-heading p {
+  margin-bottom: 5px;
+  color: var(--teal);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.route-dialog-heading h2 {
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+  font-size: 1.35rem;
+}
+
+.route-dialog-heading span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.route-dialog-close {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--panel-strong);
+}
+
+.route-dialog-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.route-dialog-action {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 68px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.72);
+  text-decoration: none;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.route-dialog-action:hover {
+  border-color: rgba(7, 108, 114, 0.35);
+  background: white;
+}
+
+.route-dialog-action > svg {
+  width: 22px;
+  height: 22px;
+  justify-self: center;
+  color: var(--teal);
+}
+
+.route-dialog-action span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.route-dialog-action strong,
+.route-dialog-action small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-dialog-action small {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.location-dialog-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.location-primary,
+.location-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border: 0;
+  border-radius: 8px;
+  font-weight: 900;
+}
+
+.location-primary {
+  gap: 9px;
+  color: white;
+  background: var(--court);
+  box-shadow: 0 14px 28px rgba(242, 93, 61, 0.22);
+}
+
+.location-primary svg {
+  width: 18px;
+  height: 18px;
+}
+
+.location-secondary {
+  padding: 0 14px;
+  color: var(--ink);
+  background: var(--panel-strong);
 }
 
 .empty-state {
@@ -550,16 +678,12 @@ output {
     bottom: 14px;
   }
 
-  .court-item button {
-    grid-template-columns: 42px minmax(0, 1fr);
-  }
-
   .court-meta {
     display: none;
   }
 
   .court-focus {
-    grid-template-columns: 42px minmax(0, 1fr);
+    grid-template-columns: 42px minmax(0, 1fr) auto;
   }
 }
 
@@ -593,29 +717,29 @@ output {
     font-size: 0;
   }
 
-  .court-card {
-    grid-template-columns: minmax(0, 1fr) 48px;
-  }
-
-  .court-focus {
-    grid-column: 1;
-  }
-
-  .route-actions {
-    min-width: 48px;
-  }
-
-  .route-action {
-    min-width: 48px;
+  .court-route-hint {
+    width: 42px;
     padding: 0;
   }
 
-  .route-action span {
+  .court-route-hint span {
     position: absolute;
     width: 1px;
     height: 1px;
     overflow: hidden;
     clip: rect(0 0 0 0);
     white-space: nowrap;
+  }
+
+  .route-dialog-panel {
+    padding: 16px;
+  }
+
+  .route-dialog-action {
+    min-height: 64px;
+  }
+
+  .location-dialog-actions {
+    grid-template-columns: 1fr;
   }
 }

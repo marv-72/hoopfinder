@@ -27,6 +27,9 @@ const state = {
   lastSearchLabel: "Pointe-a-Pitre",
 };
 
+const routeChooser = createRouteChooser();
+const locationPrompt = createLocationPrompt();
+
 const map = L.map("map", {
   zoomControl: false,
   scrollWheelZoom: true,
@@ -152,6 +155,143 @@ function googleMapsDirectionsUrl(court) {
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
+function createRouteChooser() {
+  const dialog = document.createElement("dialog");
+  dialog.className = "route-dialog";
+  dialog.innerHTML = `
+    <div class="route-dialog-panel">
+      <div class="route-dialog-heading">
+        <div>
+          <p>Choisir un itineraire</p>
+          <h2 id="route-dialog-title">Terrain</h2>
+          <span id="route-dialog-meta"></span>
+        </div>
+        <button class="route-dialog-close" type="button" aria-label="Fermer">
+          <i data-lucide="x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div class="route-dialog-actions">
+        <a class="route-dialog-action waze-link" target="_blank" rel="noopener noreferrer">
+          <i data-lucide="navigation" aria-hidden="true"></i>
+          <span>
+            <strong>Waze</strong>
+            <small>Ouvrir l'itineraire dans Waze</small>
+          </span>
+        </a>
+        <a class="route-dialog-action maps-link" target="_blank" rel="noopener noreferrer">
+          <i data-lucide="map" aria-hidden="true"></i>
+          <span>
+            <strong>Google Maps</strong>
+            <small>Ouvrir l'itineraire dans Maps</small>
+          </span>
+        </a>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(dialog);
+
+  const closeButton = dialog.querySelector(".route-dialog-close");
+  closeButton.addEventListener("click", () => dialog.close());
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) {
+      dialog.close();
+    }
+  });
+  dialog.querySelectorAll(".route-dialog-action").forEach((link) => {
+    link.addEventListener("click", () => dialog.close());
+  });
+
+  return {
+    dialog,
+    mapsLink: dialog.querySelector(".maps-link"),
+    meta: dialog.querySelector("#route-dialog-meta"),
+    title: dialog.querySelector("#route-dialog-title"),
+    wazeLink: dialog.querySelector(".waze-link"),
+  };
+}
+
+function openRouteChooser(court) {
+  routeChooser.title.textContent = court.name;
+  routeChooser.meta.textContent = `${Math.round(court.distance)} m - ${court.surface}`;
+  routeChooser.wazeLink.href = wazeDirectionsUrl(court);
+  routeChooser.mapsLink.href = googleMapsDirectionsUrl(court);
+  routeChooser.wazeLink.setAttribute("aria-label", `Ouvrir l'itineraire Waze vers ${court.name}`);
+  routeChooser.mapsLink.setAttribute("aria-label", `Ouvrir l'itineraire Google Maps vers ${court.name}`);
+
+  if (window.lucide) {
+    lucide.createIcons();
+  }
+
+  showDialog(routeChooser.dialog);
+}
+
+function createLocationPrompt() {
+  const dialog = document.createElement("dialog");
+  dialog.className = "route-dialog location-dialog";
+  dialog.innerHTML = `
+    <div class="route-dialog-panel">
+      <div class="route-dialog-heading">
+        <div>
+          <p>Position actuelle</p>
+          <h2>Trouver les terrains autour de toi</h2>
+          <span>HoopFinder peut demander l'autorisation du navigateur pour utiliser ta position.</span>
+        </div>
+        <button class="route-dialog-close location-dismiss" type="button" aria-label="Fermer">
+          <i data-lucide="x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div class="location-dialog-actions">
+        <button class="location-primary" type="button">
+          <i data-lucide="crosshair" aria-hidden="true"></i>
+          Utiliser ma position
+        </button>
+        <button class="location-secondary location-dismiss" type="button">Plus tard</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(dialog);
+
+  dialog.querySelectorAll(".location-dismiss").forEach((button) => {
+    button.addEventListener("click", () => dialog.close());
+  });
+  dialog.querySelector(".location-primary").addEventListener("click", () => {
+    dialog.close();
+    locateUser();
+  });
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) {
+      dialog.close();
+    }
+  });
+
+  return { dialog };
+}
+
+function openLocationPrompt() {
+  if (!navigator.geolocation || routeChooser.dialog.open) {
+    return;
+  }
+
+  if (window.lucide) {
+    lucide.createIcons();
+  }
+
+  showDialog(locationPrompt.dialog);
+}
+
+function showDialog(dialog) {
+  if (dialog.open) {
+    return;
+  }
+
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
+    return;
+  }
+
+  dialog.setAttribute("open", "");
+}
+
 function normalizeCourt(element, index) {
   const lat = element.lat ?? element.center?.lat;
   const lon = element.lon ?? element.center?.lon;
@@ -254,43 +394,24 @@ function renderCourts(courts) {
     item.className = "court-item";
     item.innerHTML = `
       <div class="court-card">
-      <button class="court-focus" type="button">
+      <button class="court-focus" type="button" aria-label="Choisir un itineraire vers ${safeName}">
         <span class="rank">${String(index + 1).padStart(2, "0")}</span>
         <span class="court-copy">
           <strong>${safeName}</strong>
           <span>${Math.round(court.distance)} m - ${safeSurface}</span>
         </span>
         <span class="court-meta">${safeMeta}</span>
+        <span class="court-route-hint">
+          <i data-lucide="route" aria-hidden="true"></i>
+          <span>Itineraire</span>
+        </span>
       </button>
-      <span class="route-actions" aria-label="Itineraires vers ${safeName}">
-        <a
-          class="route-action"
-          href="${wazeDirectionsUrl(court)}"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="Ouvrir l'itineraire Waze vers ${safeName}"
-          title="Itineraire Waze"
-        >
-          <i data-lucide="navigation" aria-hidden="true"></i>
-          <span>Waze</span>
-        </a>
-        <a
-          class="route-action"
-          href="${googleMapsDirectionsUrl(court)}"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="Ouvrir l'itineraire Google Maps vers ${safeName}"
-          title="Itineraire Google Maps"
-        >
-          <i data-lucide="map" aria-hidden="true"></i>
-          <span>Maps</span>
-        </a>
-      </span>
       </div>
     `;
     item.querySelector(".court-focus").addEventListener("click", () => {
       map.flyTo([court.lat, court.lon], 17, { duration: 0.8 });
       marker.openPopup();
+      openRouteChooser(court);
     });
     elements.courtList.appendChild(item);
   });
@@ -427,4 +548,5 @@ renderCourts([]);
 window.addEventListener("load", () => {
   lucide.createIcons();
   runSearch(DEFAULT_CENTER, state.lastSearchLabel);
+  window.setTimeout(openLocationPrompt, 500);
 });
