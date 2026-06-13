@@ -122,6 +122,36 @@ function courtName(tags = {}, fallback) {
   );
 }
 
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[character]);
+}
+
+function wazeDirectionsUrl(court) {
+  const params = new URLSearchParams({
+    ll: `${court.lat},${court.lon}`,
+    navigate: "yes",
+    zoom: "17",
+  });
+
+  return `https://www.waze.com/ul?${params.toString()}`;
+}
+
+function googleMapsDirectionsUrl(court) {
+  const params = new URLSearchParams({
+    api: "1",
+    destination: `${court.lat},${court.lon}`,
+    travelmode: "driving",
+  });
+
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
 function normalizeCourt(element, index) {
   const lat = element.lat ?? element.center?.lat;
   const lon = element.lon ?? element.center?.lon;
@@ -213,23 +243,52 @@ function renderCourts(courts) {
   elements.resultCount.textContent = courts.length;
 
   courts.forEach((court, index) => {
+    const safeName = escapeHtml(court.name);
+    const safeSurface = escapeHtml(court.surface);
+    const safeMeta = escapeHtml(court.lit ? "eclaire" : court.hoops);
     const marker = L.marker([court.lat, court.lon], { icon: courtIcon })
-      .bindPopup(`<strong>${court.name}</strong><br>${Math.round(court.distance)} m`);
+      .bindPopup(`<strong>${safeName}</strong><br>${Math.round(court.distance)} m`);
     marker.addTo(state.markers);
 
     const item = document.createElement("li");
     item.className = "court-item";
     item.innerHTML = `
-      <button type="button">
+      <div class="court-card">
+      <button class="court-focus" type="button">
         <span class="rank">${String(index + 1).padStart(2, "0")}</span>
         <span class="court-copy">
-          <strong>${court.name}</strong>
-          <span>${Math.round(court.distance)} m - ${court.surface}</span>
+          <strong>${safeName}</strong>
+          <span>${Math.round(court.distance)} m - ${safeSurface}</span>
         </span>
-        <span class="court-meta">${court.lit ? "eclaire" : court.hoops}</span>
+        <span class="court-meta">${safeMeta}</span>
       </button>
+      <span class="route-actions" aria-label="Itineraires vers ${safeName}">
+        <a
+          class="route-action"
+          href="${wazeDirectionsUrl(court)}"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Ouvrir l'itineraire Waze vers ${safeName}"
+          title="Itineraire Waze"
+        >
+          <i data-lucide="navigation" aria-hidden="true"></i>
+          <span>Waze</span>
+        </a>
+        <a
+          class="route-action"
+          href="${googleMapsDirectionsUrl(court)}"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Ouvrir l'itineraire Google Maps vers ${safeName}"
+          title="Itineraire Google Maps"
+        >
+          <i data-lucide="map" aria-hidden="true"></i>
+          <span>Maps</span>
+        </a>
+      </span>
+      </div>
     `;
-    item.querySelector("button").addEventListener("click", () => {
+    item.querySelector(".court-focus").addEventListener("click", () => {
       map.flyTo([court.lat, court.lon], 17, { duration: 0.8 });
       marker.openPopup();
     });
@@ -241,6 +300,10 @@ function renderCourts(courts) {
     empty.className = "empty-state";
     empty.textContent = "Aucun terrain trouve dans ce rayon. Essaie un rayon plus large.";
     elements.courtList.appendChild(empty);
+  }
+
+  if (window.lucide) {
+    lucide.createIcons();
   }
 }
 

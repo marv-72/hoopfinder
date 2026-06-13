@@ -184,13 +184,15 @@ h2 {
 
 .primary-action:hover,
 .icon-action:hover,
-.ghost-action:hover {
+.ghost-action:hover,
+.route-action:hover {
   transform: translateY(-1px);
 }
 
 .primary-action svg,
 .icon-action svg,
 .ghost-action svg,
+.route-action svg,
 .search-input-wrap svg,
 .map-overlay svg {
   width: 18px;
@@ -285,24 +287,70 @@ output {
   list-style: none;
 }
 
-.court-item button {
+.court-card {
   display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  width: 100%;
+  min-height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.court-card:hover {
+  border-color: rgba(242, 93, 61, 0.46);
+  background: white;
+}
+
+.court-focus {
+  display: grid;
+  grid-column: 1 / 3;
   grid-template-columns: 44px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   width: 100%;
   min-height: 72px;
   padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: 0;
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.66);
+  background: transparent;
   text-align: left;
 }
 
-.court-item button:hover {
-  border-color: rgba(242, 93, 61, 0.46);
-  background: white;
+.route-actions {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  align-self: stretch;
+  min-width: 82px;
+  border-left: 1px solid var(--line);
+  border-radius: 0 8px 8px 0;
+  overflow: hidden;
+}
+
+.route-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--teal);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-decoration: none;
+  transition:
+    transform 160ms ease,
+    background 160ms ease;
+}
+
+.route-action + .route-action {
+  border-top: 1px solid var(--line);
+}
+
+.route-action:hover {
+  background: rgba(198, 238, 240, 0.58);
 }
 
 .rank {
@@ -509,6 +557,10 @@ output {
   .court-meta {
     display: none;
   }
+
+  .court-focus {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 470px) {
@@ -539,5 +591,31 @@ output {
   .ghost-action span,
   .ghost-action:not(:has(span)) {
     font-size: 0;
+  }
+
+  .court-card {
+    grid-template-columns: minmax(0, 1fr) 48px;
+  }
+
+  .court-focus {
+    grid-column: 1;
+  }
+
+  .route-actions {
+    min-width: 48px;
+  }
+
+  .route-action {
+    min-width: 48px;
+    padding: 0;
+  }
+
+  .route-action span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 }
