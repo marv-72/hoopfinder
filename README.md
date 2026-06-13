@@ -1,6 +1,6 @@
-# Hoopfinder
+# HoopFinder
 
-Hoopfinder est une application web statique pour trouver des terrains de basket a proximite.
+HoopFinder est une application web statique pour trouver des terrains de basket a proximite.
 
 ## Fonctionnalites
 
