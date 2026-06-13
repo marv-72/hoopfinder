@@ -23,4 +23,6 @@ npm run dev
 npm run build
 ```
 
-Le workflow `.github/workflows/pages.yml` deploie automatiquement le dossier `dist` sur GitHub Pages a chaque push sur `main`.
+GitHub Pages sert la racine de la branche `main` sur `https://marv-72.github.io/hoopsyder/`.
+Les chemins de l'application sont relatifs pour fonctionner directement dans ce mode, et le workflow
+`.github/workflows/pages.yml` verifie que le build Vite reste valide a chaque push.

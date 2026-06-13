@@ -1,5 +1,3 @@
-import "./styles.css";
-
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 const DEFAULT_CENTER = [16.2417, -61.5331];
