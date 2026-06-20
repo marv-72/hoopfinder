@@ -49,6 +49,7 @@ const state = {
 };
 
 const routeChooser = createRouteChooser();
+const courtDetails = createCourtDetails();
 const locationPrompt = createLocationPrompt();
 
 const map = L.map("map", {
@@ -156,6 +157,129 @@ function escapeHtml(value) {
   })[character]);
 }
 
+function readableValue(value, fallback = "non renseigne") {
+  if (value === true || value === "yes") {
+    return "oui";
+  }
+
+  if (value === false || value === "no") {
+    return "non";
+  }
+
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  return String(value);
+}
+
+function safeExternalUrl(value) {
+  try {
+    const url = new URL(String(value));
+    return url.protocol === "https:" ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function wikimediaFileName(value) {
+  const name = String(value || "").trim();
+
+  if (!name || /^category:/i.test(name)) {
+    return "";
+  }
+
+  return name.replace(/^file:/i, "File:");
+}
+
+function wikimediaUrl(value) {
+  const fileName = wikimediaFileName(value);
+
+  if (!fileName) {
+    return "";
+  }
+
+  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(fileName)}`;
+}
+
+function osmElementUrl(court) {
+  if (!court.osmType || !court.id) {
+    return "";
+  }
+
+  return `https://www.openstreetmap.org/${court.osmType}/${court.id}`;
+}
+
+function courtPhoto(court) {
+  const tags = court.rawTags || {};
+  const imageUrl = safeExternalUrl((tags.image || tags["image:0"] || "").split(";")[0]);
+
+  if (imageUrl) {
+    return {
+      caption: "Photo renseignee dans OpenStreetMap",
+      url: imageUrl,
+    };
+  }
+
+  const wikimediaImage = wikimediaUrl(tags.wikimedia_commons);
+
+  if (wikimediaImage) {
+    return {
+      caption: "Photo Wikimedia Commons liee a OpenStreetMap",
+      url: wikimediaImage,
+    };
+  }
+
+  return null;
+}
+
+function courtHoopsInfo(court) {
+  const basketball = normalizedText(court.basketball);
+
+  if (court.hoopCount > 1) {
+    return `${court.hoopCount} paniers`;
+  }
+
+  if (court.hoopCount === 1) {
+    return "1 panier - moins equipe";
+  }
+
+  if (/half|demi|half_court/.test(basketball)) {
+    return "demi-terrain - moins de paniers";
+  }
+
+  if (court.hoops && court.hoops !== "basket") {
+    return court.hoops;
+  }
+
+  return "paniers non renseignes";
+}
+
+function courtDetailRows(court) {
+  const tags = court.rawTags || {};
+  const osmUrl = osmElementUrl(court);
+
+  return [
+    ["Distance", `${Math.round(court.distance)} m`],
+    ["Paniers", courtHoopsInfo(court)],
+    ["Surface", court.surface],
+    ["Eclairage", court.lit ? "oui" : readableValue(tags.lit)],
+    ["Couvert", court.covered ? "oui" : readableValue(tags.covered)],
+    ["Indoor", court.indoor ? "oui" : readableValue(tags.indoor)],
+    ["Acces", court.access],
+    ["Payant", readableValue(court.fee)],
+    ["Operateur", court.operator],
+    ["Horaires", tags.opening_hours],
+    ["Adresse", tags["addr:full"] || tags["addr:street"]],
+    ["Description", tags.description],
+    ["Site web", safeExternalUrl(tags.website || tags["contact:website"])],
+    ["Mapillary", tags.mapillary ? "photo de rue referencee" : ""],
+    ["Type", court.leisure || court.sport || court.basketball],
+    ["Source OSM", osmUrl],
+    ["Coordonnees", `${court.lat.toFixed(5)}, ${court.lon.toFixed(5)}`],
+  ];
+}
+
 function wazeDirectionsUrl(court) {
   const params = new URLSearchParams({
     ll: `${court.lat},${court.lon}`,
@@ -233,7 +357,7 @@ function createRouteChooser() {
 
 function openRouteChooser(court) {
   routeChooser.title.textContent = court.name;
-  routeChooser.meta.textContent = `${Math.round(court.distance)} m - ${court.surface}`;
+  routeChooser.meta.textContent = `${Math.round(court.distance)} m - ${courtHoopsInfo(court)}`;
   routeChooser.wazeLink.href = wazeDirectionsUrl(court);
   routeChooser.mapsLink.href = googleMapsDirectionsUrl(court);
   routeChooser.wazeLink.setAttribute("aria-label", `Ouvrir l'itineraire Waze vers ${court.name}`);
@@ -244,6 +368,110 @@ function openRouteChooser(court) {
   }
 
   showDialog(routeChooser.dialog);
+}
+
+function createCourtDetails() {
+  const dialog = document.createElement("dialog");
+  dialog.className = "route-dialog court-detail-dialog";
+  dialog.innerHTML = `
+    <div class="route-dialog-panel">
+      <div class="route-dialog-heading">
+        <div>
+          <p>Fiche terrain</p>
+          <h2 id="court-detail-title">Terrain</h2>
+          <span id="court-detail-meta"></span>
+        </div>
+        <button class="route-dialog-close court-detail-close" type="button" aria-label="Fermer">
+          <i data-lucide="x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <figure class="court-detail-photo" id="court-detail-photo" hidden>
+        <img alt="" loading="lazy" />
+        <figcaption></figcaption>
+      </figure>
+      <p class="court-detail-photo-empty" id="court-detail-photo-empty" hidden>
+        Aucune photo reelle n'est renseignee pour ce terrain dans OpenStreetMap.
+      </p>
+      <dl class="court-detail-list" id="court-detail-list"></dl>
+      <div class="court-detail-actions">
+        <button class="court-detail-route" type="button">
+          <i data-lucide="route" aria-hidden="true"></i>
+          Itineraire
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(dialog);
+
+  const closeButton = dialog.querySelector(".court-detail-close");
+  closeButton.addEventListener("click", () => dialog.close());
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) {
+      dialog.close();
+    }
+  });
+
+  return {
+    dialog,
+    list: dialog.querySelector("#court-detail-list"),
+    meta: dialog.querySelector("#court-detail-meta"),
+    photo: dialog.querySelector("#court-detail-photo"),
+    photoCaption: dialog.querySelector("#court-detail-photo figcaption"),
+    photoEmpty: dialog.querySelector("#court-detail-photo-empty"),
+    photoImage: dialog.querySelector("#court-detail-photo img"),
+    routeButton: dialog.querySelector(".court-detail-route"),
+    title: dialog.querySelector("#court-detail-title"),
+  };
+}
+
+function openCourtDetails(court) {
+  const photo = courtPhoto(court);
+
+  courtDetails.title.textContent = court.name;
+  courtDetails.meta.textContent = `${Math.round(court.distance)} m - ${court.surface}`;
+  courtDetails.photo.hidden = !photo;
+  courtDetails.photoEmpty.hidden = Boolean(photo);
+
+  if (photo) {
+    courtDetails.photoImage.src = photo.url;
+    courtDetails.photoImage.alt = `Photo reelle du terrain ${court.name}`;
+    courtDetails.photoCaption.textContent = photo.caption;
+  } else {
+    courtDetails.photoImage.removeAttribute("src");
+    courtDetails.photoImage.alt = "";
+    courtDetails.photoCaption.textContent = "";
+  }
+
+  courtDetails.list.innerHTML = courtDetailRows(court)
+    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    .map(([label, value]) => {
+      const displayValue = readableValue(value);
+      const safeUrl = safeExternalUrl(displayValue);
+
+      return `
+      <div class="court-detail-row">
+        <dt>${escapeHtml(label)}</dt>
+        <dd>${
+          safeUrl
+            ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(safeUrl)}</a>`
+            : escapeHtml(displayValue)
+        }</dd>
+      </div>
+    `;
+    })
+    .join("");
+
+  courtDetails.routeButton.onclick = () => {
+    courtDetails.dialog.close();
+    map.flyTo([court.lat, court.lon], 17, { duration: 0.8 });
+    openRouteChooser(court);
+  };
+
+  if (window.lucide) {
+    lucide.createIcons();
+  }
+
+  showDialog(courtDetails.dialog);
 }
 
 function createLocationPrompt() {
@@ -327,6 +555,7 @@ function normalizeCourt(element, index) {
     lat,
     leisure: tags.leisure || "",
     lon,
+    osmType: element.type,
     operator: tags.operator || "",
     sport: tags.sport || "",
     surface: tags.surface || tags.floor || "surface inconnue",
@@ -423,24 +652,33 @@ function renderCourts(courts) {
     item.className = "court-item";
     item.innerHTML = `
       <div class="court-card">
-      <button class="court-focus" type="button" aria-label="Choisir un itineraire vers ${safeName}">
-        <span class="rank">${String(index + 1).padStart(2, "0")}</span>
-        <span class="court-copy">
-          <strong>${safeName}</strong>
-          <span>${Math.round(court.distance)} m - ${safeSurface}</span>
-        </span>
-        <span class="court-meta">${safeMeta}</span>
-        <span class="court-route-hint">
-          <i data-lucide="route" aria-hidden="true"></i>
-          <span>Itineraire</span>
-        </span>
-      </button>
+        <button class="court-focus" type="button" aria-label="Choisir un itineraire vers ${safeName}">
+          <span class="rank">${String(index + 1).padStart(2, "0")}</span>
+          <span class="court-copy">
+            <strong>${safeName}</strong>
+            <span>${Math.round(court.distance)} m - ${safeSurface}</span>
+          </span>
+          <span class="court-meta">${safeMeta}</span>
+          <span class="court-route-hint">
+            <i data-lucide="route" aria-hidden="true"></i>
+            <span>Itineraire</span>
+          </span>
+        </button>
+        <button class="court-info-button" type="button" aria-label="Voir plus d'informations sur ${safeName}">
+          <i data-lucide="plus" aria-hidden="true"></i>
+          Plus d'infos
+        </button>
       </div>
     `;
     item.querySelector(".court-focus").addEventListener("click", () => {
       map.flyTo([court.lat, court.lon], 17, { duration: 0.8 });
       marker.openPopup();
       openRouteChooser(court);
+    });
+    item.querySelector(".court-info-button").addEventListener("click", () => {
+      map.flyTo([court.lat, court.lon], 17, { duration: 0.8 });
+      marker.openPopup();
+      openCourtDetails(court);
     });
     elements.courtList.appendChild(item);
   });
