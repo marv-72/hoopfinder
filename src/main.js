@@ -1,12 +1,16 @@
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
+const NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse";
 const DEFAULT_CENTER = [16.2417, -61.5331];
 const DEFAULT_ZOOM = 13;
 const COURT_LIMIT = 30;
+const NAME_ENRICH_LIMIT = COURT_LIMIT;
+const NAME_ENRICH_DELAY_MS = 1100;
 const VIP_REGION_RADIUS = 18000;
 const VIP_TERRITORY_RADIUS = 90000;
 const VIP_COURT_LIMIT = 140;
 const VIP_PASS_STORAGE_KEY = "hoopfinder-vip-pass";
+const reverseNameCache = new Map();
 
 const elements = {
   courtList: document.querySelector("#court-list"),
@@ -46,6 +50,7 @@ const state = {
   vipLoading: false,
   vipScope: "region",
   vipUnlocked: localStorage.getItem(VIP_PASS_STORAGE_KEY) === "active",
+  searchRunId: 0,
 };
 
 const routeChooser = createRouteChooser();
@@ -137,14 +142,73 @@ function distanceInMeters([latA, lonA], [latB, lonB]) {
   return earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function courtName(tags = {}, fallback) {
-  return (
-    tags.name ||
-    tags.operator ||
-    tags["addr:street"] ||
-    tags["description"] ||
-    `Terrain #${fallback}`
+function cleanNameCandidate(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function firstCleanValue(...values) {
+  return values.map(cleanNameCandidate).find(Boolean) || "";
+}
+
+function streetAddress(tags = {}) {
+  return [
+    tags["addr:housenumber"],
+    tags["addr:street"],
+  ].map(cleanNameCandidate).filter(Boolean).join(" ");
+}
+
+function courtNameInfo(tags = {}) {
+  const realName = firstCleanValue(
+    tags.name,
+    tags["name:fr"],
+    tags.official_name,
+    tags.alt_name,
+    tags.short_name
   );
+
+  if (realName) {
+    return {
+      hasRealName: true,
+      name: realName,
+      source: "nom OpenStreetMap",
+    };
+  }
+
+  const operator = firstCleanValue(tags.operator, tags.owner, tags.brand);
+
+  if (operator) {
+    return {
+      hasRealName: false,
+      name: `Terrain de basket - ${operator}`,
+      source: "operateur OpenStreetMap",
+    };
+  }
+
+  const address = firstCleanValue(streetAddress(tags), tags["addr:place"]);
+
+  if (address) {
+    return {
+      hasRealName: false,
+      name: `Terrain de basket - ${address}`,
+      source: "adresse OpenStreetMap",
+    };
+  }
+
+  const description = firstCleanValue(tags.description);
+
+  if (description) {
+    return {
+      hasRealName: false,
+      name: description,
+      source: "description OpenStreetMap",
+    };
+  }
+
+  return {
+    hasRealName: false,
+    name: "Terrain de basket sans nom",
+    source: "nom a enrichir",
+  };
 }
 
 function escapeHtml(value) {
@@ -260,6 +324,8 @@ function courtDetailRows(court) {
   const osmUrl = osmElementUrl(court);
 
   return [
+    ["Nom affiche", court.name],
+    ["Source du nom", court.nameSource],
     ["Distance", `${Math.round(court.distance)} m`],
     ["Paniers", courtHoopsInfo(court)],
     ["Surface", court.surface],
@@ -545,13 +611,16 @@ function normalizeCourt(element, index) {
   const lat = element.lat ?? element.center?.lat;
   const lon = element.lon ?? element.center?.lon;
   const tags = element.tags || {};
+  const nameInfo = courtNameInfo(tags, index + 1);
 
   return {
     access: tags.access || "public",
     basketball: tags.basketball || "",
     fee: tags.fee || "no",
+    hasRealName: nameInfo.hasRealName,
     id: element.id,
-    name: courtName(tags, index + 1),
+    name: nameInfo.name,
+    nameSource: nameInfo.source,
     lat,
     leisure: tags.leisure || "",
     lon,
@@ -567,6 +636,167 @@ function normalizeCourt(element, index) {
     rawTags: tags,
     distance: distanceInMeters(state.center, [lat, lon]),
   };
+}
+
+function reverseNameCacheKey(court) {
+  return `${court.lat.toFixed(5)},${court.lon.toFixed(5)}`;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function placeNameFromAddress(address = {}) {
+  const venue = firstCleanValue(
+    address.sports_centre,
+    address.recreation_ground,
+    address.pitch,
+    address.playground,
+    address.park,
+    address.school,
+    address.university
+  );
+
+  if (venue) {
+    return `Terrain de basket - ${venue}`;
+  }
+
+  const street = firstCleanValue(address.road, address.pedestrian, address.footway, address.cycleway);
+  const district = firstCleanValue(
+    address.neighbourhood,
+    address.suburb,
+    address.quarter,
+    address.hamlet,
+    address.village,
+    address.town,
+    address.city,
+    address.municipality
+  );
+
+  if (street && district) {
+    return `Terrain de basket - ${street}, ${district}`;
+  }
+
+  if (street) {
+    return `Terrain de basket - ${street}`;
+  }
+
+  if (district) {
+    return `Terrain de basket - ${district}`;
+  }
+
+  return "";
+}
+
+function courtNameFromReverse(place) {
+  const address = place.address || {};
+  const namedetails = place.namedetails || {};
+  const placeName = firstCleanValue(
+    namedetails["name:fr"],
+    namedetails.name,
+    place.name
+  );
+
+  if (placeName && !/^(basketball|basket|pitch|terrain)$/i.test(placeName)) {
+    return {
+      name: placeName,
+      source: "nom proche Nominatim",
+    };
+  }
+
+  const addressName = placeNameFromAddress(address);
+
+  if (addressName) {
+    return {
+      name: addressName,
+      source: "adresse Nominatim",
+    };
+  }
+
+  return null;
+}
+
+async function reverseLookupCourtName(court) {
+  const key = reverseNameCacheKey(court);
+
+  if (reverseNameCache.has(key)) {
+    return reverseNameCache.get(key);
+  }
+
+  const response = await fetch(`${NOMINATIM_REVERSE_URL}?${new URLSearchParams({
+    lat: String(court.lat),
+    lon: String(court.lon),
+    format: "jsonv2",
+    addressdetails: "1",
+    namedetails: "1",
+    extratags: "1",
+    zoom: "18",
+  })}`, {
+    headers: {
+      "Accept-Language": "fr",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("Nom du terrain indisponible.");
+  }
+
+  const place = await response.json();
+  const nameInfo = courtNameFromReverse(place);
+  reverseNameCache.set(key, nameInfo);
+  return nameInfo;
+}
+
+function applyEnrichedCourtName(court, nameInfo) {
+  if (!nameInfo || court.hasRealName) {
+    return false;
+  }
+
+  court.name = nameInfo.name;
+  court.nameSource = nameInfo.source;
+  court.nameEnriched = true;
+  return true;
+}
+
+async function enrichCourtNames(searchRunId, label) {
+  const targets = state.courts
+    .filter((court) => !court.hasRealName && !court.nameEnriched)
+    .slice(0, NAME_ENRICH_LIMIT);
+
+  if (targets.length === 0) {
+    return;
+  }
+
+  let updatedCount = 0;
+  setStatus(`Recherche des vrais noms autour de ${label}...`, "Noms des terrains");
+
+  for (const [index, court] of targets.entries()) {
+    if (state.searchRunId !== searchRunId) {
+      return;
+    }
+
+    if (index > 0) {
+      await delay(NAME_ENRICH_DELAY_MS);
+    }
+
+    try {
+      const nameInfo = await reverseLookupCourtName(court);
+
+      if (applyEnrichedCourtName(court, nameInfo)) {
+        updatedCount += 1;
+        renderCourts(state.courts);
+      }
+    } catch {
+      reverseNameCache.set(reverseNameCacheKey(court), null);
+    }
+  }
+
+  if (state.searchRunId === searchRunId) {
+    const nameStatus = updatedCount > 0 ? "Noms ameliores." : "Certains terrains restent sans nom officiel.";
+    setStatus(`${state.courts.length} terrains trouves autour de ${label}. ${nameStatus}`, `${state.courts.length} spots`);
+  }
 }
 
 function buildOverpassQuery([lat, lon], radius, limit = COURT_LIMIT) {
@@ -701,7 +931,7 @@ function centerCourtAndOpenRoute(court) {
 }
 
 function vipDisplayName(court, index) {
-  return court.name.startsWith("Terrain #") ? `Spot VIP #${index + 1}` : court.name;
+  return court.hasRealName ? court.name : `Spot VIP #${index + 1}`;
 }
 
 function vipCenterKey(scope) {
@@ -736,7 +966,7 @@ function vipScore(court) {
   const basketball = normalizedText(court.basketball);
   const access = normalizedText(court.access);
 
-  if (!court.name.startsWith("Terrain #")) {
+  if (court.hasRealName) {
     score += 14;
   }
 
@@ -951,6 +1181,8 @@ function fitCourtBounds() {
 }
 
 async function runSearch(center = state.center, label = state.lastSearchLabel) {
+  const searchRunId = state.searchRunId + 1;
+  state.searchRunId = searchRunId;
   setBusy(true);
   state.center = center;
   state.lastSearchLabel = label;
@@ -969,6 +1201,10 @@ async function runSearch(center = state.center, label = state.lastSearchLabel) {
 
     const sourceLabel = courts.length ? "terrains trouves" : "exemples affiches";
     setStatus(`${state.courts.length} ${sourceLabel} autour de ${label}.`, `${state.courts.length} spots`);
+
+    if (courts.length) {
+      void enrichCourtNames(searchRunId, label);
+    }
   } catch (error) {
     state.courts = sampleCourts.map((court) => ({
       ...court,
